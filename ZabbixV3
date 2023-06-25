@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# Replace these variables with your own values
+ZABBIX_API="http://<ZABBIX_SERVER_IP>/zabbix/api_jsonrpc.php"
+ZABBIX_USERNAME="<ZABBIX_USERNAME>"
+ZABBIX_PASSWORD="<ZABBIX_PASSWORD>"
+GITHUB_REPO="<GITHUB_USERNAME>/<GITHUB_REPOSITORY>"
+
+# Create an authentication token for Zabbix API
+ZABBIX_TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' -d '
+{
+  "jsonrpc": "2.0",
+  "method": "user.login",
+  "params": {
+    "user": "'"${ZABBIX_USERNAME}"'",
+    "password": "'"${ZABBIX_PASSWORD}"'"
+  },
+  "id": 1
+}' $ZABBIX_API | jq -r '.result')
+
+# Get the GitHub repository statistics using GitHub API
+GITHUB_STATS=$(curl -s "https://api.github.com/repos/$GITHUB_REPO")
+
+# Extract the relevant statistics from the GitHub API response
+STARGAZERS=$(echo $GITHUB_STATS | jq -r '.stargazers_count')
+FORKS=$(echo $GITHUB_STATS | jq -r '.forks_count')
+WATCHERS=$(echo $GITHUB_STATS | jq -r '.subscribers_count')
+
+# Update Zabbix items with the retrieved GitHub statistics
+curl -s -X POST -H 'Content-Type: application/json' -d '
+{
+  "jsonrpc": "2.0",
+  "method": "item.update",
+  "params": {
+    "auth": "'"${ZABBIX_TOKEN}"'",
+    "hostid": "<ZABBIX_HOST_ID>",
+    "itemid": "<ZABBIX_ITEM_ID_FOR_STARGAZERS>",
+    "name": "GitHub Stargazers",
+    "value": "'"$STARGAZERS"'"
+  },
+  "id": 1
+}' $ZABBIX_API
+
+curl -s -X POST -H 'Content-Type: application/json' -d '
+{
+  "jsonrpc": "2.0",
+  "method": "item.update",
+  "params": {
+    "auth": "'"${ZABBIX_TOKEN}"'",
+    "hostid": "<ZABBIX_HOST_ID>",
+    "itemid": "<ZABBIX_ITEM_ID_FOR_FORKS>",
+    "name": "GitHub Forks",
+    "value": "'"$FORKS"'"
+  },
+  "id": 1
+}' $ZABBIX_API
+
+curl -s -X POST -H 'Content-Type: application/json' -d '
+{
+  "jsonrpc": "2.0",
+  "method": "item.update",
+  "params": {
+    "auth": "'"${ZABBIX_TOKEN}"'",
+    "hostid": "<ZABBIX_HOST_ID>",
+    "itemid": "<ZABBIX_ITEM_ID_FOR_WATCHERS>",
+    "name": "GitHub Watchers",
+    "value": "'"$WATCHERS"'"
+  },
+  "id": 1
+}' $ZABBIX_API
+
+# Trigger a Grafana dashboard refresh
+curl -s -X POST "http://<GRAFANA_SERVER_IP>/api/dashboards/db/<GRAFANA_DASHBOARD_UID>/refresh"
